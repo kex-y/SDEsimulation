@@ -34,7 +34,7 @@ BM = np.cumsum(realizeddBM, axis = 0)
 
 # Creating initial conditions of points in the unit circle
 init = [np.array([x, y]) for x in np.arange(-1, 1, meshsize) for y in np.arange(-1, 1, meshsize) 
-            if x ** 2 + y ** 2 <= 9]# and x ** 2 + y ** 2 >= 0.25]
+            if x ** 2 + y ** 2 <= 1]# and x ** 2 + y ** 2 >= 0.25]
 
 paths = [HopfSDE(v, lambda v: rotate(v, r = r, alpha = alpha), delta, realizeddBM) for v in init]
 pathsT = list(map(list, zip(*paths)))
