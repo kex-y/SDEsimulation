@@ -47,23 +47,26 @@ def HopfSDE4RK(v, drift, delta, noise):
         k4 = drift(prev + k3 * delta)
         next = prev + (k1 + 2 * k2 + 2 * k3 + k4) * delta / 6 + dW
         if np.linalg.norm(next) > 10e1:
+            print('Hit the boundary')
             path.append(np.array([100, 0]))
         else:
             path.append(next)
     return path
 
-seed = 37
-delta = 0.005
-endtime = 4
+seed = 5
+delta = 0.0005
+endtime = 16
 meshsize = 0.05
-r = 2.8
+r = 2
 alpha = 0
-fps = 48
+fps = 12
 initradsq = 1
+method = HopfSDE4RK
 
 # Take a realization of the Brownian motion
 realizeddBM = dWs(seed, delta, endtime, 2)
-BM = np.cumsum(realizeddBM, axis = 0)
+# Brownian motion (scaled for visibility)
+BM = (0.005 / delta) * np.cumsum(realizeddBM, axis = 0)
 
 # Creating initial conditions of points in the unit circle
 init = [np.array([x, y]) 
@@ -71,12 +74,12 @@ init = [np.array([x, y])
             for y in np.arange(-initradsq, initradsq, meshsize) 
                 if x ** 2 + y ** 2 <= initradsq]# and x ** 2 + y ** 2 >= 0.25]
 
-paths = np.array([HopfSDE4RK(v, lambda v: rotate(v, r = r, alpha = alpha), delta, realizeddBM) 
+paths = np.array([method(v, lambda v: rotate(v, r = r, alpha = alpha), delta, realizeddBM) 
             for v in tqdm(init, desc = 'Simulating paths', unit = 'pt')])
 pathsT = np.stack(paths, axis = 1)
 
 maxval = max([abs(coord) for path in paths for pt in path for coord in pt])
-maxvalBM = max([abs(coord) for coord in BM.flatten()])
+# maxvalBM = max([abs(coord) for coord in BM.flatten()])
 
 # Maximum norm at a given time:
 maxnorms = np.array([max([np.linalg.norm(pt) for pt in time]) for time in pathsT])
@@ -102,8 +105,8 @@ if delete:
 animate = True
 if animate:
     
-    axislim = max(min(10, maxval), maxvalBM)
-    #max(maxval, maxvalBM)
+    axislim = maxval
+    #max(min(10, maxval), maxvalBM)
     fig, (ax1, ax2) = plt.subplots(1, 2)
     # fig.set_size_inches(5,5)
 
@@ -122,7 +125,7 @@ if animate:
         ax2.plot(t, maxn, label = 'Max norm', color = 'red')
         ax2.plot(t, avgn, label = 'Average norm', color = 'blue')
         ax2.set_xlim([0, endtime])
-        ax2.set_ylim([0, 10])
+        ax2.set_ylim([0, min(30, maxval)])
         # ax2.set_yscale('symlog', base = 2)
         # ax2.set_xscale('symlog', base = 2)
         # ax2.set_yscale('log', base = 2)
