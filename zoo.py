@@ -13,6 +13,7 @@ def dWs(seed, delta, T, dim = 1):
 def rotate(v, r = 1, alpha = 0): 
     return -alpha * v  + np.linalg.norm(v) ** r * np.array([-v[1], v[0]])
 
+# Euler-Maruyama method
 def HopfSDE(v, drift, delta, noise):
     path = [v]
     for dW in noise: 
@@ -20,38 +21,68 @@ def HopfSDE(v, drift, delta, noise):
         if np.linalg.norm(prev) > 10e2:
             path.append(np.array([1000, 0]))
         else:
-            path.append(prev + drift(prev) * delta + dW)
+            path.append(prev + drift(prev) * delta)# + dW)
+    return path
+
+# AB 2-step method
+def HopfSDE2step(v, drift, delta, noise):
+    path = [v, v + drift(v) * delta]
+    for dW in noise: 
+        prev = path[-1]
+        prev2 = path[-2]
+        if np.linalg.norm(prev) > 10e2 or np.linalg.norm(prev2) > 10e2:
+            path.append(np.array([1000, 0]))
+        else:
+            path.append(prev + (3 * drift(prev) - drift(prev2)) * delta / 2 + dW)
+    return path
+
+# Runge-Kutta 4th order method
+def HopfSDE4RK(v, drift, delta, noise):
+    path = [v]
+    for dW in noise: 
+        prev = path[-1]
+        k1 = drift(prev)
+        k2 = drift(prev + k1 * delta / 2)
+        k3 = drift(prev + k2 * delta / 2)
+        k4 = drift(prev + k3 * delta)
+        next = prev + (k1 + 2 * k2 + 2 * k3 + k4) * delta / 6 + dW
+        if np.linalg.norm(next) > 10e1:
+            path.append(np.array([100, 0]))
+        else:
+            path.append(next)
     return path
 
 seed = 37
-delta = 0.001
-endtime = 8
+delta = 0.005
+endtime = 4
 meshsize = 0.05
-r = 2
+r = 2.8
 alpha = 0
-fps = 60
+fps = 48
+initradsq = 1
 
 # Take a realization of the Brownian motion
 realizeddBM = dWs(seed, delta, endtime, 2)
 BM = np.cumsum(realizeddBM, axis = 0)
 
 # Creating initial conditions of points in the unit circle
-init = [np.array([x, y]) for x in np.arange(-1, 1, meshsize) for y in np.arange(-1, 1, meshsize) 
-            if x ** 2 + y ** 2 <= 1]# and x ** 2 + y ** 2 >= 0.25]
+init = [np.array([x, y]) 
+            for x in np.arange(-initradsq, initradsq, meshsize) 
+            for y in np.arange(-initradsq, initradsq, meshsize) 
+                if x ** 2 + y ** 2 <= initradsq]# and x ** 2 + y ** 2 >= 0.25]
 
-paths = np.array([HopfSDE(v, lambda v: rotate(v, r = r, alpha = alpha), delta, realizeddBM) 
+paths = np.array([HopfSDE4RK(v, lambda v: rotate(v, r = r, alpha = alpha), delta, realizeddBM) 
             for v in tqdm(init, desc = 'Simulating paths', unit = 'pt')])
 pathsT = np.stack(paths, axis = 1)
-#np.array(list(map(list, zip(*paths))))
 
 maxval = max([abs(coord) for path in paths for pt in path for coord in pt])
 maxvalBM = max([abs(coord) for coord in BM.flatten()])
 
-# Norm of the point with max norm at a given time:
+# Maximum norm at a given time:
 maxnorms = np.array([max([np.linalg.norm(pt) for pt in time]) for time in pathsT])
 
-# Average norm of the points at a given time:
-avgnorms = np.array([np.mean([np.linalg.norm(pt) for pt in time]) for time in pathsT])
+# Median norm at a given time:
+avgnorms = np.array([np.median([np.linalg.norm(pt) for pt in time]) for time in pathsT])
 
 # Time
 times = np.arange(0, delta * len(avgnorms), delta)
@@ -72,6 +103,7 @@ animate = True
 if animate:
     
     axislim = max(min(10, maxval), maxvalBM)
+    #max(maxval, maxvalBM)
     fig, (ax1, ax2) = plt.subplots(1, 2)
     # fig.set_size_inches(5,5)
 
@@ -90,8 +122,8 @@ if animate:
         ax2.plot(t, maxn, label = 'Max norm', color = 'red')
         ax2.plot(t, avgn, label = 'Average norm', color = 'blue')
         ax2.set_xlim([0, endtime])
-        ax2.set_ylim([0, 64])
-        ax2.set_yscale('symlog', base = 2)
+        ax2.set_ylim([0, 10])
+        # ax2.set_yscale('symlog', base = 2)
         # ax2.set_xscale('symlog', base = 2)
         # ax2.set_yscale('log', base = 2)
 
