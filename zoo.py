@@ -21,7 +21,7 @@ def HopfSDE(v, drift, delta, noise):
         if np.linalg.norm(prev) > 10e2:
             path.append(np.array([1000, 0]))
         else:
-            path.append(prev + drift(prev) * delta)# + dW)
+            path.append(prev + drift(prev) * delta + dW)
     return path
 
 # AB 2-step method
@@ -54,14 +54,17 @@ def HopfSDE4RK(v, drift, delta, noise):
     return path
 
 seed = 5
-delta = 0.0005
+delta = 0.005
 endtime = 16
-meshsize = 0.05
+meshsize = 0.1
 r = 2
 alpha = 0
-fps = 12
+fps = 24
 initradsq = 1
 method = HopfSDE4RK
+
+delete = True
+animate = True
 
 # Take a realization of the Brownian motion
 realizeddBM = dWs(seed, delta, endtime, 2)
@@ -79,7 +82,7 @@ paths = np.array([method(v, lambda v: rotate(v, r = r, alpha = alpha), delta, re
 pathsT = np.stack(paths, axis = 1)
 
 maxval = max([abs(coord) for path in paths for pt in path for coord in pt])
-# maxvalBM = max([abs(coord) for coord in BM.flatten()])
+maxvalBM = max([abs(coord) for coord in BM.flatten()])
 
 # Maximum norm at a given time:
 maxnorms = np.array([max([np.linalg.norm(pt) for pt in time]) for time in pathsT])
@@ -94,19 +97,18 @@ times = np.arange(0, delta * len(avgnorms), delta)
 def deleteFrames(arr, keep):
     return arr[np.round(np.linspace(0, len(arr) - 1, keep)).astype(int)]
 
-delete = True
-if delete:
+# No need to delete frames if we're not animating
+if delete and animate:
+    
     maxnorms = deleteFrames(maxnorms, endtime * fps)
     avgnorms = deleteFrames(avgnorms, endtime * fps)
     times = deleteFrames(times, endtime * fps)
     pathsT = deleteFrames(pathsT, endtime * fps)
 
 # Animate
-animate = True
 if animate:
     
-    axislim = maxval
-    #max(min(10, maxval), maxvalBM)
+    axislim = max(maxval, maxvalBM)
     fig, (ax1, ax2) = plt.subplots(1, 2)
     # fig.set_size_inches(5,5)
 
