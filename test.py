@@ -27,7 +27,7 @@ def HopfSDE4RK(v, drift, delta, endtime):
 def PointsInCircum(radius, n = 100):
     return [np.array([cos(2 * pi / n * x) * radius, sin(2 * pi / n * x) * radius]) for x in range(0, n)]
 
-r = 2
+r = 2.5
 delta = 0.0005
 endtime = 16
 maxnorm = 100

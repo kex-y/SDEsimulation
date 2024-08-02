@@ -39,6 +39,7 @@ def HopfSDE2step(v, drift, delta, noise):
 # Runge-Kutta 4th order method
 def HopfSDE4RK(v, drift, delta, noise):
     path = [v]
+    hasHit = False
     for dW in noise: 
         prev = path[-1]
         k1 = drift(prev)
@@ -47,16 +48,18 @@ def HopfSDE4RK(v, drift, delta, noise):
         k4 = drift(prev + k3 * delta)
         next = prev + (k1 + 2 * k2 + 2 * k3 + k4) * delta / 6 + dW
         if np.linalg.norm(next) > 10e1:
-            print('Hit the boundary')
+            if not hasHit:
+                print('Hit the boundary')
+                hasHit = True
             path.append(np.array([100, 0]))
         else:
             path.append(next)
     return path
 
 seed = 5
-delta = 0.005
-endtime = 16
-meshsize = 0.1
+delta = 0.001
+endtime = 7
+meshsize = 0.02
 r = 2
 alpha = 0
 fps = 24
@@ -108,7 +111,7 @@ if delete and animate:
 # Animate
 if animate:
     
-    axislim = max(maxval, maxvalBM)
+    axislim = min(max(maxval, maxvalBM), 10)
     fig, (ax1, ax2) = plt.subplots(1, 2)
     # fig.set_size_inches(5,5)
 
