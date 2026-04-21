@@ -19,6 +19,7 @@ matplotlib.use("Agg", force=True)
 
 import gc
 import sys
+import shutil
 import warnings
 import hashlib
 import json
@@ -89,7 +90,7 @@ save_dpi           = 100
 #     nframes/playback_fps = endtime*time_scale. `time_scale > 1` plays back
 #     slower than real time; `= 1` is real-time.
 GIF_MAX_FPS = 50
-time_scale  = 1.5
+time_scale  = 1
 
 # Auto-derivation. We always play back at the maximum GIF-safe rate and bake
 # the time_scale into how many frames we simulate, so slow-motion stays
@@ -174,6 +175,29 @@ nsteps   = int(endtime / delta)
 nframes_total = int(endtime * fps) if downsample else (nsteps + 1)
 # Indices (into the 0..nsteps step grid) that we persist to disk.
 idx_frames = np.round(np.linspace(0, nsteps, nframes_total)).astype(int)
+
+# ---------------- Cache size guard ----------------
+# A previous run allocated a ~48 GB memmap and crashed the machine. The
+# trajectory array is (nframes_total, N, 2) float64 = 16 bytes per entry,
+# and N can reach millions of initial conditions -- the resulting .npy file
+# can easily exceed available RAM + disk. Rule: refuse to allocate if the
+# projected memmap would consume more than half of the free disk space on
+# the cache partition. This leaves headroom for the OS, other files, and
+# the Brownian / state / stats sidecars, and scales with whatever disk
+# you actually have available.
+_projected_bytes = nframes_total * N * 2 * 8   # float64
+_projected_gb    = _projected_bytes / (1024**3)
+_cache_parent    = os.path.dirname(os.path.abspath(__file__))
+_free_bytes      = shutil.disk_usage(_cache_parent).free
+_free_gb         = _free_bytes / (1024**3)
+if _projected_bytes > _free_bytes / 2:
+    sys.exit(
+        f"[cache-guard] Refusing to allocate a {_projected_gb:.2f} GB "
+        f"trajectory memmap: that is more than half of the "
+        f"{_free_gb:.2f} GB free on {_cache_parent}.\n"
+        f"  shape = (nframes_total={nframes_total}, N={N}, 2), dtype=float64\n"
+        f"  Reduce meshsize / size / endtime / fps, or free up disk space."
+    )
 
 # ---- Brownian increments (small, cached as its own file) ----
 if os.path.exists(_bm_npy):

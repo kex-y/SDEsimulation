@@ -1,0 +1,17 @@
+[project]
+name = "sim-sde"
+version = "0.1.0"
+description = "SDE simulation scripts"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "matplotlib>=3.9",
+    "numpy>=2.1",
+    "tqdm>=4.67",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.408",
+    "ruff>=0.15",
+]
