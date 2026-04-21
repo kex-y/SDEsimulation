@@ -59,3 +59,4 @@ im = ax0.pcolormesh(x, y, z, cmap=cmap)
 fig.colorbar(im, ax=ax0)
 ax0.set_title('pcolormesh with levels')
 plt.show()
+

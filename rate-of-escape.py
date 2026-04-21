@@ -8,7 +8,7 @@ r = 5
 alpha = 0
 fps = 24
 size = 5
-method = HopfSDE4RK
+method = HopfSDE
 
 # Take a realization of the Brownian motion
 # realizeddBM = dWs(seed, delta, endtime, 2)
@@ -31,3 +31,4 @@ X, Y = np.meshgrid(xs, ys)
 # hist, xedges, yedges = np.histogram2d(init[:,0], init[:,1], weights = finalpos)
 plt.pcolormesh(X, Y, finalpos)
 plt.show()
+

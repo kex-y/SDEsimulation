@@ -48,3 +48,4 @@ for norm in range(1, maxnorm):
         print(f'At norm = {norm}, maxdiff = {maxdiff}')
         break
     
+
