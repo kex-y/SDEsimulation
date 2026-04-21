@@ -180,24 +180,14 @@ idx_frames = np.round(np.linspace(0, nsteps, nframes_total)).astype(int)
 # A previous run allocated a ~48 GB memmap and crashed the machine. The
 # trajectory array is (nframes_total, N, 2) float64 = 16 bytes per entry,
 # and N can reach millions of initial conditions -- the resulting .npy file
-# can easily exceed available RAM + disk. Rule: refuse to allocate if the
-# projected memmap would consume more than half of the free disk space on
-# the cache partition. This leaves headroom for the OS, other files, and
-# the Brownian / state / stats sidecars, and scales with whatever disk
-# you actually have available.
+# can easily exceed available RAM + disk. The actual check is deferred
+# below to the fresh-allocation branch, so reloading an existing cache
+# (complete or partial) never trips the guard -- only a brand-new memmap
+# does. We precompute the projected size here just so the numbers are
+# available for logging.
 _projected_bytes = nframes_total * N * 2 * 8   # float64
 _projected_gb    = _projected_bytes / (1024**3)
 _cache_parent    = os.path.dirname(os.path.abspath(__file__))
-_free_bytes      = shutil.disk_usage(_cache_parent).free
-_free_gb         = _free_bytes / (1024**3)
-if _projected_bytes > _free_bytes / 2:
-    sys.exit(
-        f"[cache-guard] Refusing to allocate a {_projected_gb:.2f} GB "
-        f"trajectory memmap: that is more than half of the "
-        f"{_free_gb:.2f} GB free on {_cache_parent}.\n"
-        f"  shape = (nframes_total={nframes_total}, N={N}, 2), dtype=float64\n"
-        f"  Reduce meshsize / size / endtime / fps, or free up disk space."
-    )
 
 # ---- Brownian increments (small, cached as its own file) ----
 if os.path.exists(_bm_npy):
@@ -263,6 +253,24 @@ else:
         for p in (_paths_npy, _stats_npz, _state_npz):
             if os.path.exists(p):
                 os.remove(p)
+
+        # Only now, at the moment of fresh allocation, do we enforce the
+        # size guard: reusing an existing cache (complete or partial) does
+        # not consume additional disk. Rule: the new memmap must not
+        # exceed half of the currently free disk space.
+        _free_bytes = shutil.disk_usage(_cache_parent).free
+        _free_gb    = _free_bytes / (1024**3)
+        if _projected_bytes > _free_bytes / 2:
+            sys.exit(
+                f"[cache-guard] Refusing to allocate a {_projected_gb:.2f} GB "
+                f"trajectory memmap: that is more than half of the "
+                f"{_free_gb:.2f} GB free on {_cache_parent}.\n"
+                f"  shape = (nframes_total={nframes_total}, N={N}, 2), "
+                f"dtype=float64\n"
+                f"  Reduce meshsize / size / endtime / fps, or free up disk "
+                f"space."
+            )
+
         pathsT = np.lib.format.open_memmap(
             _paths_npy, mode="w+",
             dtype=np.float64, shape=(nframes_total, N, 2),
@@ -349,6 +357,34 @@ else:
     # Reopen read-only for downstream use (frees the r+ handle).
     del pathsT
     pathsT = np.load(_paths_npy, mmap_mode="r")
+
+# ---- Post-simulation cache report ----
+# The memmap file is sparse on macOS APFS: the logical size is the full
+# (nframes_total, N, 2)*8 bytes allocation, but only written-to pages
+# occupy disk blocks. Report both so the "on-disk" figure reflects what
+# actually competes with free space, while the "allocated" figure warns
+# if the file could grow further.
+def _dir_sizes(path):
+    logical = on_disk = 0
+    for root, _dirs, files in os.walk(path):
+        for f in files:
+            p = os.path.join(root, f)
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            logical += st.st_size
+            on_disk += st.st_blocks * 512   # POSIX: st_blocks counts 512-byte units
+    return logical, on_disk
+
+_logical_bytes, _on_disk_bytes = _dir_sizes(_cache_dir)
+_free_bytes_after = shutil.disk_usage(_cache_parent).free
+_GB = 1024**3
+print(
+    f"[cache] .cache/ usage: {_on_disk_bytes / _GB:.2f} GB on disk "
+    f"({_logical_bytes / _GB:.2f} GB allocated)  |  "
+    f"free disk: {_free_bytes_after / _GB:.2f} GB"
+)
 
 times  = idx_frames * delta
 idx_BM = np.clip(idx_frames, 0, max(len(BM) - 1, 0))
@@ -539,11 +575,24 @@ if animate_on:
     for spine in cbar.ax.spines.values():
         spine.set_edgecolor("#777777")
 
-    # Legend: make the "yellow = blown up" convention explicit.
+    # Legend: make the "yellow = blown up" convention explicit. The
+    # heatmap background ranges from deep blue to saturated white, so a
+    # frameless legend with light-grey text is unreadable wherever the
+    # patch sits over the white region. Use an opaque dark frame, a
+    # white-on-dark label, and outline the swatch in black so the yellow
+    # square pops against either end of the colormap.
     blowup_handle = Patch(facecolor=BLOWUP_COLOR, edgecolor="none",
-                          label=fr"blew up ($|X_t| \geq {BLOWUP_THRESHOLD:g}$)")
-    ax2.legend(handles=[blowup_handle], loc="upper right",
-               frameon=False, fontsize=9, labelcolor="#dddddd")
+                          label=fr"$|X_t| \geq {BLOWUP_THRESHOLD:g}$")
+    _leg = ax2.legend(
+        handles=[blowup_handle], loc="upper right",
+        frameon=True, fontsize=11, labelcolor="white",
+        facecolor="#0a0a0a", edgecolor="#bbbbbb",
+        framealpha=0.92, borderpad=0.6,
+        handlelength=1.6, handleheight=1.2, handletextpad=0.6,
+    )
+    _leg.get_frame().set_linewidth(0.8)
+    for _txt in _leg.get_texts():
+        _txt.set_fontweight("bold")
 
     # -------- Panel 3: max / median norm vs time --------
     # Round y_upper up to the next multiple of the tick step so both x and y end
